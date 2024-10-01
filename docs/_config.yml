@@ -15,8 +15,7 @@
 # in the templates via {{ site.myvariable }}.
 title: TFG 2024 Daniel Borja (Weblog)
 email:
-description: >- # this means to ignore newlines until "baseurl:"
-Memoria por semanas del desarrollo de mi trabajo de fin de grado
+description: Memoria por semanas del desarrollo de mi trabajo de fin de grado
 #twitter_username: username
 github_username: dborja2021
 minimal_mistakes_skin: dark
