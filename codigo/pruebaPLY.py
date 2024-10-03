@@ -47,9 +47,9 @@ def plot_lidar_data(points, colors_hex):
 
     fig.update_layout(
         scene=dict(
-            xaxis_title='Eje X',
-            yaxis_title='Eje Y',
-            zaxis_title='Eje Z',
+            xaxis=dict(title='Eje X', range=[-10, 10]),
+            yaxis=dict(title='Eje Y', range=[-10, 10]),
+            zaxis=dict(title='Eje Z', range=[-10, 10]),
         ),
         title="Gráfico 3D de puntos con colores"
     )
