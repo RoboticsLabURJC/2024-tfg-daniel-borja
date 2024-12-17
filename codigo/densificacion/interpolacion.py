@@ -8,6 +8,22 @@ from sklearn.neighbors import NearestNeighbors
 import tkinter as tk
 from tkinter import filedialog, simpledialog
 
+def read_pcd_file(file_path):
+    """Lee archivos .pcd y devuelve los puntos e intensidades."""
+    if not file_path.endswith('.pcd') or not os.path.exists(file_path):
+        print(f"Error: .pcd file not found at {file_path}")
+        sys.exit(1)
+    pcd = o3d.io.read_point_cloud(file_path)  # Cargar archivo .pcd
+    points = np.asarray(pcd.points)  # Extraer coordenadas XYZ
+    
+    # Verificar si el archivo tiene intensidades (remisiones)
+    if hasattr(pcd, 'colors') and len(pcd.colors) > 0:
+        remissions = np.linalg.norm(np.asarray(pcd.colors), axis=1)  # Intensidad basada en colores
+    else:
+        remissions = np.zeros(len(points))  # Crear valores de intensidad predeterminados
+    
+    return points, remissions
+
 def read_bin_file(file_path):
     """Lee archivos .bin y devuelve los puntos e intensidades."""
     if not file_path.endswith('.bin') or not os.path.exists(file_path):
@@ -80,44 +96,78 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
     return points, remissions, new_points, new_remissions
 
 
-def save_point_cloud(points: np.ndarray, remissions: np.ndarray, output_path: str):
-    """Guarda la nube de puntos densificada en formato PLY."""
-    vertex = np.zeros(len(points), dtype=[
-        ('x', 'f4'), ('y', 'f4'), ('z', 'f4'), 
-        ('intensity', 'f4')
-    ])
+def save_point_cloud(points: np.ndarray, remissions: np.ndarray, output_path: str, input_extension: str):
+    """
+    Guarda la nube de puntos densificada en el formato especificado.
     
-    vertex['x'] = points[:, 0]
-    vertex['y'] = points[:, 1]
-    vertex['z'] = points[:, 2]
-    vertex['intensity'] = remissions
+    :param points: Nube de puntos (N, 3).
+    :param remissions: Intensidades de los puntos (N,).
+    :param output_path: Ruta del archivo de salida.
+    :param input_extension: Extensión del archivo de entrada (.bin, .ply, .pcd).
+    """
+    if input_extension == '.ply':
+        # Guardar en formato PLY
+        vertex = np.zeros(len(points), dtype=[
+            ('x', 'f4'), ('y', 'f4'), ('z', 'f4'), 
+            ('intensity', 'f4')
+        ])
+        vertex['x'] = points[:, 0]
+        vertex['y'] = points[:, 1]
+        vertex['z'] = points[:, 2]
+        vertex['intensity'] = remissions
+        
+        ply_element = PlyElement.describe(vertex, 'vertex')
+        PlyData([ply_element]).write(output_path)
+        print(f"Archivo PLY guardado en: {output_path}")
     
-    ply_element = PlyElement.describe(vertex, 'vertex')
-    PlyData([ply_element]).write(output_path)
-    print(f"Archivo densificado guardado en: {output_path}")
+    elif input_extension == '.pcd':
+        # Guardar en formato PCD usando Open3D
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        
+        if remissions is not None and len(remissions) > 0:
+            # Normalizar intensidades a escala de 0-1 y asignarlas como colores
+            colors = np.tile(remissions[:, None], (1, 3)) / np.max(remissions)
+            pcd.colors = o3d.utility.Vector3dVector(colors)
+        
+        o3d.io.write_point_cloud(output_path, pcd, write_ascii=True)
+        print(f"Archivo PCD guardado en: {output_path}")
+    
+    elif input_extension == '.bin':
+        # Guardar en formato BIN
+        combined = np.hstack((points, remissions[:, None]))
+        combined.astype(np.float32).tofile(output_path)
+        print(f"Archivo BIN guardado en: {output_path}")
+    
+    else:
+        print(f"Formato '{input_extension}' no soportado. No se guardó el archivo.")
+
 
 def batch_densification_with_viz(input_directory: str, output_directory: str, 
                                   density_factor: float = 5.0):
-    
-    """Procesa archivos .bin y .ply en lotes, mostrando visualización y guardando resultados."""
     os.makedirs(output_directory, exist_ok=True)
     
     input_files = [f for f in os.listdir(input_directory) 
-                   if f.endswith(('.bin', '.ply'))]
+                   if f.endswith(('.bin', '.ply', '.pcd'))]
     
     for file in input_files:
         input_path = os.path.join(input_directory, file)
-        output_filename = f"densified_{file.replace('.bin', '.ply').replace('.ply', '.ply')}"
+        output_filename = f"densified_{file}"  # Mantener misma extensión
         output_path = os.path.join(output_directory, output_filename)
+        input_extension = os.path.splitext(file)[1]  # Obtener extensión (.bin, .ply, .pcd)
         
         try:
             # Leer archivo dependiendo de su extensión
-            if file.endswith('.bin'):
+            if input_extension == '.bin':
                 points, remissions = read_bin_file(input_path)
-            elif file.endswith('.ply'):
+            elif input_extension == '.ply':
                 points, remissions = read_ply_file(input_path)
+            elif input_extension == '.pcd':
+                points, remissions = read_pcd_file(input_path)
+            else:
+                print(f"Formato '{input_extension}' no soportado para lectura.")
+                continue
             
-            # Mostrar número de puntos originales
             print(f"Número de puntos original: {len(points)}")
             
             # Densificar la nube de puntos
@@ -125,18 +175,19 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
                 points, remissions, density_factor
             )
             
-            # Mostrar número de puntos densificados
             print(f"Número de puntos densificado: {len(points) + len(noise_points)}")
             
-            # Guardar los puntos densificados
+            # Guardar los puntos densificados en el mismo formato
             save_point_cloud(
                 np.vstack([points, noise_points]), 
                 np.concatenate([remissions, noise_remissions]), 
-                output_path
+                output_path,
+                input_extension
             )
         
         except Exception as e:
             print(f"Error procesando {file}: {e}")
+
             
 
 def main():
