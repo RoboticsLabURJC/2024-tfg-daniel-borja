@@ -28,7 +28,7 @@ def read_ply_file(file_path):
     return points, remissions
 
 def densify_point_cloud(points: np.ndarray, remissions: np.ndarray, 
-                         density_factor: float = 5.0, noise_stddev: float = 0.02) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+                         density_factor: float = 5.0, noise_stddev: float = 0.02) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Densifica la nube de puntos sin perder detalle, añadiendo puntos de forma controlada.
     """
