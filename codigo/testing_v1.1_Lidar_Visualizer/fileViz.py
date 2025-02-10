@@ -177,7 +177,7 @@ def add_new_sample(point_cloud, points, colors):
 
 def configure_render_options(vis):
     vis.get_render_option().background_color = [0.05, 0.05, 0.05]
-    vis.get_render_option().point_size = 1.0
+    vis.get_render_option().point_size = 10.0
 
 def configure_camera_third_person(vis, data_type=True):
     view_control = vis.get_view_control()
@@ -233,8 +233,8 @@ def vis_sequences(path, initial_colormap='plasma', initial_fps=0.5):
     vis.create_window(window_name='PointCloud Sequence')
     configure_render_options(vis)
     vis.add_geometry(point_cloud)
-    add_sensor(vis)
-    add_axis(vis)
+    #add_sensor(vis)
+    #add_axis(vis)
     configure_camera_third_person(vis, is_bin_file[0])
     
 
