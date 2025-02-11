@@ -31,6 +31,6 @@ vertex['z'] = points[:, 2]
 vertex['intensity'] = intensities
 
 ply_element = PlyElement.describe(vertex, 'vertex')
-PlyData([ply_element]).write('/home/dani/2024-tfg-daniel-borja/codigo/densificacion/Ejemplo/two_spheres.ply')
+PlyData([ply_element]).write('/home/dani/2024-tfg-daniel-borja/codigo/densificacion/3_points.ply')
 
-print("Archivo PLY generado: two_spheres.ply")
+print("Archivo PLY generado")

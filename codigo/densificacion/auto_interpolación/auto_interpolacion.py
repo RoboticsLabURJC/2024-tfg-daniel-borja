@@ -54,7 +54,7 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
     Densifica la nube de puntos utilizando interpolación basada en vecinos más cercanos.
     """
     # Usar NearestNeighbors para encontrar los vecinos más cercanos
-    nn = NearestNeighbors(n_neighbors=2)
+    nn = NearestNeighbors(n_neighbors=1)
     nn.fit(points)
     
     # Establecer el número de nuevos puntos a crear
@@ -81,10 +81,10 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
 
         
         # Obtener los 2 vecinos más cercanos (el primero es él mismo)
-        distances,indices = nn.kneighbors([point], n_neighbors=2)
+        distances,indices = nn.kneighbors([point])
 
         # Seleccionar el segundo vecino más cercano para interpolar
-        neighbor_point = points[indices[0][1]]
+        neighbor_point = points[indices[0][0]]
 
         print(f"\nPunto original seleccionado [{index}]: {point}")
         print(f"Punto vecino encontrado [{indices[0][0]}]: {neighbor_point}")
@@ -95,7 +95,7 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
         interpolated_point = (point + neighbor_point) / 2 + displacement
         
         # Las intensidades de los nuevos puntos serán las medias de las intensidades del punto original y el vecino
-        interpolated_remission = (remissions[index] + remissions[indices[0][1]]) / 2
+        interpolated_remission = (remissions[index] + remissions[indices[0][0]]) / 2
         
         # Agregar el nuevo punto y su intensidad
         new_points.append(interpolated_point)

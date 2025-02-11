@@ -3,12 +3,11 @@ import os
 from plyfile import PlyData, PlyElement
 import open3d as o3d
 import sys
-from typing import Tuple
-from sklearn.neighbors import NearestNeighbors
 import tkinter as tk
 from tkinter import filedialog, simpledialog
+from sklearn.neighbors import NearestNeighbors
 
-# ------ Lectura de archivos -------
+# ------  Lectura de archivos -------
 
 def read_pcd_file(file_path):
     """Lee archivos .pcd y devuelve los puntos e intensidades."""
@@ -46,87 +45,44 @@ def read_ply_file(file_path):
     remissions = plydata['vertex'].data['intensity']
     return points, remissions
 
-# ------ Densificación -------
+# ------ Muestreo -------
 
-def densify_point_cloud(points: np.ndarray, remissions: np.ndarray, 
-                                       density_factor: float = 5.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def reduce_point_cloud_by_voxel(points: np.ndarray, remissions: np.ndarray, voxel_size: float) -> tuple[np.ndarray, np.ndarray]:
     """
-    Densifica la nube de puntos utilizando interpolación basada en vecinos más cercanos.
+    Reduce la densidad de la nube de puntos utilizando voxelización.
+    
+    :param points: Nube de puntos original (N, 3)
+    :param remissions: Intensidades de los puntos originales (N,)
+    :param voxel_size: Tamaño del voxel (en las mismas unidades que las coordenadas de los puntos)
+    :return: Puntos reducidos y sus intensidades
     """
-    # Usar NearestNeighbors para encontrar los vecinos más cercanos
-    nn = NearestNeighbors(n_neighbors=2)
-    nn.fit(points)
+    # Crear una nube de puntos en Open3D
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
     
-    # Establecer el número de nuevos puntos a crear
-    num_new_points = int((len(points) * density_factor)-len(points))
+    # Aplicar filtrado por voxelización
+    downsampled_pcd = pcd.voxel_down_sample(voxel_size)
     
-    # Cuenta de las veces que se usa cada punto
-    point_usage_count = {}
-
-    # Almacenar los puntos y las intensidades generadas
-    new_points = []
-    new_remissions = []
+    # Obtener los puntos reducidos
+    reduced_points = np.asarray(downsampled_pcd.points)
     
-    for _ in range(num_new_points):
-        # Elegir un punto aleatorio de la nube de puntos original
-        index = np.random.randint(0, len(points))
-        point = points[index]
-
-
-        # Incrementar contador para el punto seleccionado
-        if index in point_usage_count:
-            point_usage_count[index] += 1
-        else:
-            point_usage_count[index] = 1
-
-        
-        # Obtener los 2 vecinos más cercanos (el primero es él mismo)
-        distances,indices = nn.kneighbors([point], n_neighbors=2)
-
-        # Seleccionar el segundo vecino más cercano para interpolar
-        neighbor_point = points[indices[0][1]]
-
-        print(f"\nPunto original seleccionado [{index}]: {point}")
-        print(f"Punto vecino encontrado [{indices[0][0]}]: {neighbor_point}")
-        print(f"¿Son el mismo punto?: {np.array_equal(point, neighbor_point)}")
-        
-        # Interpolar entre el punto original y el vecino seleccionado
-        displacement = np.random.uniform(-0.1, 0.1, size=(3,))  # Pequeño desplazamiento aleatorio
-        interpolated_point = (point + neighbor_point) / 2 + displacement
-        
-        # Las intensidades de los nuevos puntos serán las medias de las intensidades del punto original y el vecino
-        interpolated_remission = (remissions[index] + remissions[indices[0][1]]) / 2
-        
-        # Agregar el nuevo punto y su intensidad
-        new_points.append(interpolated_point)
-        new_remissions.append(interpolated_remission)
-
-
+    # Si hay intensidades, asignarlas a los puntos reducidos
+    if len(remissions) > 0:
+        # Encontrar los índices de los puntos originales más cercanos a los puntos reducidos
+        nn = NearestNeighbors(n_neighbors=1)
+        nn.fit(points)
+        _, indices = nn.kneighbors(reduced_points)
+        reduced_remissions = remissions[indices.flatten()]
+    else:
+        reduced_remissions = np.zeros(len(reduced_points))
     
-    # Mostrar el uso de los puntos
-    print("\nInformación de puntos usados como referencia:")
-    print("Formato: [Punto ID] (x, y, z) - usado N veces - Tipo")
-    for point_idx, count in point_usage_count.items():
-        coord = points[point_idx]
-        print(f"[{point_idx}] ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) - usado {count} veces - ORIGINAL")
+    return reduced_points, reduced_remissions
 
-    # También podemos mostrar los nuevos puntos generados
-    print("\nPuntos nuevos generados:")
-    for i, new_point in enumerate(new_points):
-        print(f"[NEW_{i}] ({new_point[0]:.3f}, {new_point[1]:.3f}, {new_point[2]:.3f}) - INTERPOLADO")
-
-    # Convertir las listas a arrays
-    new_points = np.array(new_points)
-    new_remissions = np.array(new_remissions)
-    
-    # Retornar los puntos originales junto con los nuevos puntos
-    return points, remissions, new_points, new_remissions
-
-# ------ Guardado de archivos-------
+# ------ Guardado de archivos -------
 
 def save_point_cloud(points: np.ndarray, remissions: np.ndarray, output_path: str, input_extension: str):
     """
-    Guarda la nube de puntos densificada en el formato especificado.
+    Guarda la nube de puntos reducida en el formato especificado.
     
     :param points: Nube de puntos (N, 3).
     :param remissions: Intensidades de los puntos (N,).
@@ -170,9 +126,14 @@ def save_point_cloud(points: np.ndarray, remissions: np.ndarray, output_path: st
     else:
         print(f"Formato '{input_extension}' no soportado. No se guardó el archivo.")
 
-
-def batch_densification_with_viz(input_directory: str, output_directory: str, 
-                                  density_factor: float = 5.0):
+def batch_reduction_by_voxel(input_directory: str, output_directory: str, voxel_size: float):
+    """
+    Procesa todos los archivos en un directorio y reduce la densidad de las nubes de puntos por voxelización.
+    
+    :param input_directory: Directorio de entrada con archivos .bin, .ply o .pcd.
+    :param output_directory: Directorio de salida para guardar los archivos reducidos.
+    :param voxel_size: Tamaño del voxel para la reducción.
+    """
     os.makedirs(output_directory, exist_ok=True)
     
     input_files = [f for f in os.listdir(input_directory) 
@@ -180,7 +141,7 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
     
     for file in input_files:
         input_path = os.path.join(input_directory, file)
-        output_filename = f"densified_{file}"  # Mantener misma extensión
+        output_filename = f"reduced_{file}"  # Mantener misma extensión
         output_path = os.path.join(output_directory, output_filename)
         input_extension = os.path.splitext(file)[1]  # Obtener extensión (.bin, .ply, .pcd)
         
@@ -198,25 +159,23 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
             
             print(f"Número de puntos original: {len(points)}")
             
-            # Densificar la nube de puntos
-            points, remissions, noise_points, noise_remissions = densify_point_cloud(
-                points, remissions, density_factor
+            # Reducir la densidad de la nube de puntos por voxelización
+            reduced_points, reduced_remissions = reduce_point_cloud_by_voxel(
+                points, remissions, voxel_size
             )
             
-            print(f"Número de puntos densificado: {len(points) + len(noise_points)}")
+            print(f"Número de puntos reducido: {len(reduced_points)}")
             
-            # Guardar los puntos densificados en el mismo formato
+            # Guardar los puntos reducidos en el mismo formato
             save_point_cloud(
-                np.vstack([points, noise_points]), 
-                np.concatenate([remissions, noise_remissions]), 
+                reduced_points, 
+                reduced_remissions, 
                 output_path,
                 input_extension
             )
         
         except Exception as e:
             print(f"Error procesando {file}: {e}")
-
-            
 
 def main():
     root = tk.Tk()
@@ -234,20 +193,20 @@ def main():
         print("No se seleccionó ningún directorio de salida.")
         return
 
-    # Solicitar factor de densificación
-    density_factor = simpledialog.askfloat(
-        "Factor de Densificación", 
-        "Introduce el factor de densificación (recomendado: 3-10):", 
-        initialvalue=5.0, minvalue=1.0, maxvalue=20.0
+    # Solicitar tamaño del voxel
+    voxel_size = simpledialog.askfloat(
+        "Tamaño del Voxel", 
+        "Introduce el tamaño del voxel para la reducción (por ejemplo, 0.1):", 
+        initialvalue=0.1, minvalue=0.01, maxvalue=10.0
     )
 
-    if density_factor is not None:
-        batch_densification_with_viz(
+    if voxel_size is not None:
+        batch_reduction_by_voxel(
             input_directory, 
             output_directory, 
-            density_factor, 
+            voxel_size
         )
-        print("Proceso de densificación completado.")
+        print("Proceso de reducción por voxelización completado.")
 
 if __name__ == "__main__":
     main()
