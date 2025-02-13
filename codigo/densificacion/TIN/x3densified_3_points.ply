@@ -1,0 +1,10 @@
+ply
+format binary_little_endian 1.0
+element vertex 9
+property float x
+property float y
+property float z
+property float intensity
+end_header
+\[©À@%¿ËŸ4¿Ó5*?˜‚©ÀQ+g?Úž>	ãý=Y°œÀLTm¾Üw?.w?Q
+¦ÀÆ·¼>E¬>U	>ÐW¦Àx£¼¾Ë÷@¾d‰?ÅV§À}Y¿>ÅiI>êáœ>´Ï¤À° ò=j*œ>É>”]£Àå­Õ¾«Û=±?åÐ¦Àq}½;ýõ<úfÞ>

@@ -1,0 +1,9 @@
+ply
+format binary_little_endian 1.0
+element vertex 15
+property float x
+property float y
+property float z
+property float intensity
+end_header
+\[©À@%¿ËŸ4¿Ó5*?˜‚©ÀQ+g?Úž>	ãý=Y°œÀLTm¾Üw?.w?ê¤À‹îÚ¾ªá<‰%?ò£Àï;>en×>¸%Ã>Oï¦À“Ê¯>ÅKb>§¢>—‡£Àø]¾7Y‡>+ù>6ã¨À¿Å(?]>÷kU>X¦ÀhZ·>_•§>0ìž>9B§Àq„Í¾éoŸ¾kÁ?õ9žÀÑ£Ñ½{Nb?·¯ì>ï©À—>Õ5¾ÛdÆ>˜N£ÀÙÅ‹=ëà>v(Ñ>¹¨À®Ûô»ù+¾C€á>*Ø§Àr`·¾½±¾W?
