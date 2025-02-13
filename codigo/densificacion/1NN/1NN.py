@@ -58,7 +58,7 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
     nn.fit(points)
     
     # Establecer el número de nuevos puntos a crear
-    num_new_points = int((len(points) * density_factor)-len(points))
+    num_new_points = int((len(points) * (density_factor-1)))
     
     # Cuenta de las veces que se usa cada punto
     point_usage_count = {}
@@ -72,6 +72,22 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
         index = np.random.randint(0, len(points))
         point = points[index]
 
+        # Elegir un punto que haya sido usado menos veces
+        if not point_usage_count:  # Si el diccionario está vacío
+            index = np.random.randint(0, len(points))
+
+        else:
+            # Encontrar el mínimo número de veces que se ha usado cualquier punto
+            min_usage = min(point_usage_count.values())
+            # Obtener todos los índices que tienen el mínimo uso
+            least_used_indices = [idx for idx, count in point_usage_count.items() if count == min_usage]
+            # Si hay puntos que aún no se han usado, incluirlos
+            unused_indices = [i for i in range(len(points)) if i not in point_usage_count]
+            candidate_indices = least_used_indices + unused_indices
+            # Seleccionar aleatoriamente entre los candidatos
+            index = np.random.choice(candidate_indices)
+
+        point = points[index]
 
         # Incrementar contador para el punto seleccionado
         if index in point_usage_count:
@@ -100,9 +116,7 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
         # Agregar el nuevo punto y su intensidad
         new_points.append(interpolated_point)
         new_remissions.append(interpolated_remission)
-
-
-    
+ 
     # Mostrar el uso de los puntos
     print("\nInformación de puntos usados como referencia:")
     print("Formato: [Punto ID] (x, y, z) - usado N veces - Tipo")
@@ -118,9 +132,12 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
     # Convertir las listas a arrays
     new_points = np.array(new_points)
     new_remissions = np.array(new_remissions)
+
+    combined_points = np.vstack([points, new_points])
+    combined_remissions = np.concatenate([remissions, new_remissions])    
     
     # Retornar los puntos originales junto con los nuevos puntos
-    return points, remissions, new_points, new_remissions
+    return combined_points, combined_remissions
 
 # ------ Guardado de archivos-------
 
@@ -199,16 +216,16 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
             print(f"Número de puntos original: {len(points)}")
             
             # Densificar la nube de puntos
-            points, remissions, noise_points, noise_remissions = densify_point_cloud(
+            points, remissions = densify_point_cloud(
                 points, remissions, density_factor
             )
             
-            print(f"Número de puntos densificado: {len(points) + len(noise_points)}")
+            print(f"Número de puntos densificado: {len(points)}")
             
             # Guardar los puntos densificados en el mismo formato
             save_point_cloud(
-                np.vstack([points, noise_points]), 
-                np.concatenate([remissions, noise_remissions]), 
+                np.vstack([points]), 
+                np.concatenate([remissions]), 
                 output_path,
                 input_extension
             )

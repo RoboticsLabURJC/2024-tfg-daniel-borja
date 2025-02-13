@@ -4,7 +4,8 @@ from plyfile import PlyData, PlyElement
 import open3d as o3d
 import sys
 from typing import Tuple
-from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import Delaunay
+from scipy.interpolate import LinearNDInterpolator
 import tkinter as tk
 from tkinter import filedialog, simpledialog
 
@@ -46,97 +47,49 @@ def read_ply_file(file_path):
     remissions = plydata['vertex'].data['intensity']
     return points, remissions
 
-# ------ Densificación -------
+# ------ Densificación con Triangulación de Delaunay -------
 
 def densify_point_cloud(points: np.ndarray, remissions: np.ndarray, 
                                        density_factor: float = 5.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Densifica la nube de puntos utilizando interpolación basada en vecinos más cercanos.
+    Densifica la nube de puntos utilizando triangulación de Delaunay e interpolación lineal.
     """
-    # Usar NearestNeighbors para encontrar los vecinos más cercanos
-    nn = NearestNeighbors(n_neighbors=1)
-    nn.fit(points)
+    # Crear la triangulación de Delaunay
+    tri = Delaunay(points[:, :2])  # Solo usamos las coordenadas (x, y) para la triangulación
+    
+    # Crear un interpolador lineal basado en la triangulación
+    z_interpolator = LinearNDInterpolator(tri, points[:,2])
+    remission_interpolator = LinearNDInterpolator(tri, remissions)
     
     # Establecer el número de nuevos puntos a crear
-    num_new_points = int((len(points) * (density_factor-1)))
+    target_point = int(len(points) * density_factor)
     
-    # Cuenta de las veces que se usa cada punto
-    point_usage_count = {}
-
-    # Almacenar los puntos y las intensidades generadas
+    # Generar nuevos puntos dentro del área de la triangulación
+    x_min, x_max = points[:, 0].min(), points[:, 0].max()
+    y_min, y_max = points[:, 1].min(), points[:, 1].max()
+    
     new_points = []
     new_remissions = []
     
-    for _ in range(num_new_points):
-        # Elegir un punto aleatorio de la nube de puntos original
-        index = np.random.randint(0, len(points))
-        point = points[index]
+    while len(new_points) + len(points) < target_point:
+        # Generar un punto aleatorio dentro del rango (x,y)
+        x = np.random.uniform(x_min, x_max)
+        y = np.random.uniform(y_min, y_max)
 
-        # Elegir un punto que haya sido usado menos veces
-        if not point_usage_count:  # Si el diccionario está vacío
-            index = np.random.randint(0, len(points))
+        # Verificar si el punto está dentro de la triangulación
+        if tri.find_simplex(np.array([[x, y]])) >= 0:
+            # Interpolar el valor de z y la intensidad
+            z_interp = z_interpolator(x, y)
+            remission_interp = remission_interpolator(x, y)
 
-        else:
-            # Encontrar el mínimo número de veces que se ha usado cualquier punto
-            min_usage = min(point_usage_count.values())
-            # Obtener todos los índices que tienen el mínimo uso
-            least_used_indices = [idx for idx, count in point_usage_count.items() if count == min_usage]
-            # Si hay puntos que aún no se han usado, incluirlos
-            unused_indices = [i for i in range(len(points)) if i not in point_usage_count]
-            candidate_indices = least_used_indices + unused_indices
-            # Seleccionar aleatoriamente entre los candidatos
-            index = np.random.choice(candidate_indices)
-
-        point = points[index]
-
-        # Incrementar contador para el punto seleccionado
-        if index in point_usage_count:
-            point_usage_count[index] += 1
-        else:
-            point_usage_count[index] = 1
-
-        
-        # Obtener los 2 vecinos más cercanos (el primero es él mismo)
-        distances,indices = nn.kneighbors([point])
-
-        # Seleccionar el segundo vecino más cercano para interpolar
-        neighbor_point = points[indices[0][0]]
-
-        print(f"\nPunto original seleccionado [{index}]: {point}")
-        print(f"Punto vecino encontrado [{indices[0][0]}]: {neighbor_point}")
-        print(f"¿Son el mismo punto?: {np.array_equal(point, neighbor_point)}")
-        
-        # Interpolar entre el punto original y el vecino seleccionado
-        displacement = np.random.uniform(-0.1, 0.1, size=(3,))  # Pequeño desplazamiento aleatorio
-        interpolated_point = (point + neighbor_point) / 2 + displacement
-        
-        # Las intensidades de los nuevos puntos serán las medias de las intensidades del punto original y el vecino
-        interpolated_remission = (remissions[index] + remissions[indices[0][0]]) / 2
-        
-        # Agregar el nuevo punto y su intensidad
-        new_points.append(interpolated_point)
-        new_remissions.append(interpolated_remission)
-
+            if not np.isnan(z_interp):
+                new_points.append([x,y,z_interp])
+                new_remissions.append(remission_interp)
 
     
-    # Mostrar el uso de los puntos
-    print("\nInformación de puntos usados como referencia:")
-    print("Formato: [Punto ID] (x, y, z) - usado N veces - Tipo")
-    for point_idx, count in point_usage_count.items():
-        coord = points[point_idx]
-        print(f"[{point_idx}] ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) - usado {count} veces - ORIGINAL")
-
-    # También podemos mostrar los nuevos puntos generados
-    print("\nPuntos nuevos generados:")
-    for i, new_point in enumerate(new_points):
-        print(f"[NEW_{i}] ({new_point[0]:.3f}, {new_point[1]:.3f}, {new_point[2]:.3f}) - INTERPOLADO")
-
-    # Convertir las listas a arrays
-    new_points = np.array(new_points)
-    new_remissions = np.array(new_remissions)
-
     combined_points = np.vstack([points, new_points])
     combined_remissions = np.concatenate([remissions, new_remissions])
+
     
     # Retornar los puntos originales junto con los nuevos puntos
     return combined_points, combined_remissions
@@ -189,6 +142,7 @@ def save_point_cloud(points: np.ndarray, remissions: np.ndarray, output_path: st
     else:
         print(f"Formato '{input_extension}' no soportado. No se guardó el archivo.")
 
+# ------ Procesamiento por lotes -------
 
 def batch_densification_with_viz(input_directory: str, output_directory: str, 
                                   density_factor: float = 5.0):
@@ -233,7 +187,7 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
         except Exception as e:
             print(f"Error procesando {file}: {e}")
 
-            
+# ------ Interfaz de usuario -------
 
 def main():
     root = tk.Tk()
