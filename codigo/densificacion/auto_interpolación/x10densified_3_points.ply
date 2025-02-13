@@ -1,9 +1,0 @@
-ply
-format binary_little_endian 1.0
-element vertex 30
-property float x
-property float y
-property float z
-property float intensity
-end_header
-\[©À@%¿ËŸ4¿Ó5*?˜‚©ÀQ+g?Úž>	ãý=Y°œÀLTm¾Üw?.w?¹JªÀ-`?å²y>	ãý=_|¬À5h0¿cß7¿Ó5*?òªÀó¿¤8'¿Ó5*?ƒÙ¨À^	z?š‡›>	ãý=aªÀÆã_?Â½>	ãý=¨»ŸÀj‘¾‘ªj?.w?ßšÀåð¾p?.w?"³œÀV–‰¾	ƒ?.w?B¨Àèà¿<@¿Ó5*?Ø¨À3Ð!¿»!¿Ó5*?´À‹—¾œÆa?.w?.©«ÀÛà]?ØÂu>	ãý=†•œÀaI¾n/‡?.w?¤¨Àu£3¿óýE¿Ó5*?B9«À´c?ìè´>	ãý=éj©Àw>h?C£¤>	ãý=ítžÀ+U)¾3Å…?.w?°X¨À¦'¿Õ•9¿Ó5*?Íõ¦À0ãw?¾`>	ãý=Z§šÀ¢œ¾c?.w?W;¬ÀÍ|¿i^=¿Ó5*?•§À’¿u…J¿Ó5*?uéšÀT	˜¾sœ{?.w?ZªÀÜr?•2º>	ãý=¶i©À'€?DM`>	ãý=	—¨ÀÿV¿µ&@¿Ó5*?,6ÀG(¤¾ò@y?.w?
