@@ -177,7 +177,7 @@ def add_new_sample(point_cloud, points, colors):
 
 def configure_render_options(vis):
     vis.get_render_option().background_color = [0.05, 0.05, 0.05]
-    vis.get_render_option().point_size = 10.0
+    vis.get_render_option().point_size = 2.0
 
 def configure_camera_third_person(vis, data_type=True):
     view_control = vis.get_view_control()
