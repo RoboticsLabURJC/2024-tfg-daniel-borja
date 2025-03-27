@@ -4,10 +4,9 @@ from plyfile import PlyData, PlyElement
 import open3d as o3d
 import sys
 from typing import Tuple
-from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import Delaunay
 import tkinter as tk
 from tkinter import filedialog, simpledialog
-from scipy.stats import truncnorm
 
 # ------ Lectura de archivos -------
 
@@ -47,124 +46,78 @@ def read_ply_file(file_path):
     remissions = plydata['vertex'].data['intensity']
     return points, remissions
 
-# ------ Densificación -------
+# ------ Densificación con Triangulación de Delaunay -------
 
 def densify_point_cloud(points: np.ndarray, remissions: np.ndarray, 
                                        density_factor: float = 5.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Densifica la nube de puntos utilizando interpolación basada en los dos vecinos más cercanos.
+    Densifica la nube de puntos utilizando triangulación de Delaunay e interpolación lineal.
     """
-    # Usar NearestNeighbors para encontrar los vecinos más cercanos
-    nn = NearestNeighbors(n_neighbors=3)
-    nn.fit(points)
+    # Crear la triangulación de Delaunay
+    tri = Delaunay(points[:, :2])  # Toma las coordenadas (x, y) para la triangulación
     
-    # Establecer el número de nuevos puntos a crear
-    num_new_points = int((len(points) * (density_factor-1)))
-    
-    # Cuenta de las veces que se usa cada punto
-    point_usage_count = {}
+    # Calcular el número de nuevos puntos a crear
+    num_original_points = len(points)
+    num_new_points = int(num_original_points * (density_factor-1))
 
-    # Almacenar los puntos y las intensidades generadas
+    # Calcular el número de puntos a generar por triángulo
+    num_triangles = len(tri.simplices)
+    points_per_triangle = num_new_points // num_triangles
+    remaining_points = num_new_points % num_triangles
+        
     new_points = []
     new_remissions = []
-
-    #Parámetros de la distribución normal truncada
-    media = 0.5
-    desviacion_estandar = 0.2
-    limite_inferior = 0
-    limite_superior = 1   
-
-    #Convertir los límites al espacio de la distribucion normal   
-    a = (limite_inferior - media) / desviacion_estandar
-    b = (limite_superior - media) / desviacion_estandar
     
-    for _ in range(num_new_points):
-        # Elegir un punto aleatorio de la nube de puntos original
-        index = np.random.randint(0, len(points))
-        point = points[index]
+    for i, simplex in enumerate(tri.simplices):
+        # Obtener los vértices del triángulo
+        triangle_vertices = points[simplex] # Selecciona las coordenadas de los vertices que forma el triangulo
+        triangle_remissions = remissions[simplex] # intensidades de los vertices del triángulo
 
-        # Elegir un punto que haya sido usado menos veces
-        if not point_usage_count:  # Si el diccionario está vacío
-            index = np.random.randint(0, len(points))
-
-        else:
-            # Encontrar el mínimo número de veces que se ha usado cualquier punto
-            min_usage = min(point_usage_count.values())
-            # Obtener todos los índices que tienen el mínimo uso
-            least_used_indices = [idx for idx, count in point_usage_count.items() if count == min_usage]
-            # Si hay puntos que aún no se han usado, incluirlos
-            unused_indices = [i for i in range(len(points)) if i not in point_usage_count]
-            candidate_indices = least_used_indices + unused_indices
-            # Seleccionar aleatoriamente entre los candidatos
-            index = np.random.choice(candidate_indices)
-
-        point = points[index]
-
-        # Incrementar contador para el punto seleccionado
-        if index in point_usage_count:
-            point_usage_count[index] += 1
-        else:
-            point_usage_count[index] = 1
-
-        
-        # Obtener los 2 vecinos más cercanos (el primero es él mismo)
-        distances,indices = nn.kneighbors([point], n_neighbors=3)
-
-        # Seleccionar los puntos para la interpolacion
-        point_A = points[indices[0][0]]
-        point_B = points[indices[0][1]]
-        point_C = points[indices[0][2]]
-
-        # Generar pesos aleatorios que sumen 1
-        lambda_1 = truncnorm.rvs(a ,b, loc=media, scale=desviacion_estandar)
-        lambda_2 = truncnorm.rvs(a ,b, loc=media, scale=desviacion_estandar)
-        lambda_3 = truncnorm.rvs(a ,b, loc=media, scale=desviacion_estandar)
-
-         # Normalizar los pesos para que sumen 1
-        total = lambda_1 + lambda_2 + lambda_3
-        lambda_1 /= total
-        lambda_2 /= total
-        lambda_3 /= total
+        # Calcular el número de puntos para este triángulo
+        # points_per_triangle es el número base de puntos a generar por triángulo
+        # remaining_points es el resto de puntos que no se han distribuido uniformemente
+        # Si el índice del triángulo (i) es menor que remaining_points, se genera un punto adiciona
+        num_points_this_triangle = points_per_triangle + (1 if i < remaining_points else 0)
                 
-        # Interpolacion aplicando D=λ1*​A+λ2*​B+λ3*​C
-        interpolated_point = lambda_1 * point_A + lambda_2 * point_B + lambda_3 * point_C
+        # Generar nuevos puntos dentro del triangulo actual
+        for _ in range(num_points_this_triangle):
 
-        # Calcular las distancias d_A, d_B y d_C
-        d_A = np.linalg.norm(interpolated_point - point_A)  # Distancia al punto original
-        d_B = np.linalg.norm(interpolated_point - point_B)  # Distancia al primer vecino
-        d_C = np.linalg.norm(interpolated_point - point_C)  # Distancia al segundo vecino
+            # Vértices del triángulo (V1, V2, V3)
+            V1, V2, V3 = triangle_vertices
+            # Generar coordenadas baricéntricas aleatorias
+            w1, w2 = np.random.rand(2)
+            if w1 + w2 > 1:
+                w1, w2 = 1 - w1, 1 - w2
+            w3 = 1 - w1 - w2
 
-        # Aplicar la fórmula de interpolación para la remisión
-        r_A = remissions[index]  # Remisión del punto original
-        r_B = remissions[indices[0][1]]  # Remisión del primer vecino
-        r_C = remissions[indices[0][2]]  # Remisión del segundo vecino
+            # Calcular el punto en el plano del triángulo
+            new_point = w1 * triangle_vertices[0] + w2 * triangle_vertices[1] + w3 * triangle_vertices[2]
 
-        # Fórmula de interpolación de la remisión
-        interpolated_remission = ( (1/d_A) * r_A + (1/d_B) * r_B + (1/d_C) * r_C ) / ( (1/d_A) + (1/d_B) + (1/d_C) )
-        
-        # Agregar el nuevo punto y su intensidad
-        new_points.append(interpolated_point)
-        new_remissions.append(interpolated_remission)
- 
-    # Mostrar el uso de los puntos
-    ## print("\nInformación de puntos usados como referencia:")
-    ## print("Formato: [Punto ID] (x, y, z) - usado N veces - Tipo")
-    ## for point_idx, count in point_usage_count.items():
-        ## coord = points[point_idx]
-        ## print(f"[{point_idx}] ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) - usado {count} veces - ORIGINAL")
+            # Ahora que new_point está definido, podemos acceder a sus coordenadas
+            Px, Py = new_point[0], new_point[1]  # Coordenadas x e y del nuevo punto
 
-    # También podemos mostrar los nuevos puntos generados
-    ## print("\nPuntos nuevos generados:")
-    ## for i, new_point in enumerate(new_points):
-    ##    print(f"[NEW_{i}] ({new_point[0]:.3f}, {new_point[1]:.3f}, {new_point[2]:.3f}) - INTERPOLADO")
+            # Denominador común para w1 y w2
+            denominator = (V2[1] - V3[1]) * (V1[0] - V3[0]) + (V3[0] - V2[0]) * (V1[1] - V3[1])
 
-    # Convertir las listas a arrays
-    new_points = np.array(new_points)
-    new_remissions = np.array(new_remissions)
+            # Calcular w1 y w2 usando las fórmulas de coordenadas baricéntricas
+            w1 = ((V2[1] - V3[1]) * (Px - V3[0]) + (V3[0] - V2[0]) * (Py - V3[1])) / denominator
+            w2 = ((V3[1] - V1[1]) * (Px - V3[0]) + (V1[0] - V3[0]) * (Py - V3[1])) / denominator
+            w3 = 1 - w1 - w2
 
-    combined_points = np.vstack([points, new_points])
-    combined_remissions = np.concatenate([remissions, new_remissions])    
+            # Calcular el punto en el plano del triángulo
+            new_point = w1* triangle_vertices[0] + w2* triangle_vertices[1] + w3 * triangle_vertices[2]
+            
+            # Calcular la intensidad usando interpolación ponderada por distancia inversa
+            # Las coordenadas baricéntricas (r1, r2, w3) ya son ponderaciones normalizadas
+            remission_interp = w1* triangle_remissions[0] + w2* triangle_remissions[1] + w3 * triangle_remissions[2]
+
+            # Agregar el nuevo punto y su intensidad a la lista
+            new_points.append(new_point)
+            new_remissions.append(remission_interp)
     
+    combined_points = np.vstack([points, new_points])
+    combined_remissions = np.concatenate([remissions, new_remissions])
+
     # Retornar los puntos originales junto con los nuevos puntos
     return combined_points, combined_remissions
 
@@ -197,12 +150,12 @@ def save_point_cloud(points: np.ndarray, remissions: np.ndarray, output_path: st
     elif input_extension == '.pcd':
         # Guardar en formato PCD usando Open3D
         pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
+        pcd.points = o3d.utility.Vectow3dVector(points)
         
         if remissions is not None and len(remissions) > 0:
             # Normalizar intensidades a escala de 0-1 y asignarlas como colores
             colors = np.tile(remissions[:, None], (1, 3)) / np.max(remissions)
-            pcd.colors = o3d.utility.Vector3dVector(colors)
+            pcd.colors = o3d.utility.Vectow3dVector(colors)
         
         o3d.io.write_point_cloud(output_path, pcd, write_ascii=True)
         print(f"Archivo PCD guardado en: {output_path}")
@@ -216,6 +169,7 @@ def save_point_cloud(points: np.ndarray, remissions: np.ndarray, output_path: st
     else:
         print(f"Formato '{input_extension}' no soportado. No se guardó el archivo.")
 
+# ------ Procesamiento por lotes -------
 
 def batch_densification_with_viz(input_directory: str, output_directory: str, 
                                   density_factor: float = 5.0):
@@ -245,9 +199,7 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
             print(f"Número de puntos original: {len(points)}")
             
             # Densificar la nube de puntos
-            points, remissions = densify_point_cloud(
-                points, remissions, density_factor
-            )
+            points, remissions = densify_point_cloud(points, remissions, density_factor)
             
             print(f"Número de puntos densificado: {len(points)}")
             
@@ -262,12 +214,14 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
         except Exception as e:
             print(f"Error procesando {file}: {e}")
 
-            
+# ------ Interfaz de usuario -------
 
 def main():
     # Solicitar directorio de entrada por terminal
-    print("\n=== Densificación de nubes de puntos con IDW(3-NN) ===")
-    input_directory = input("Introduce la ruta del directorio de entrada: ").strip()
+    print("\n=== Densificación de nubes de puntos con TIN ===")
+    input_directory = input("\nIntroduce la ruta del directorio de entrada: ").strip()
+    
+    # Validar directorio de entrada
     if not os.path.isdir(input_directory):
         print(f"\nError: El directorio '{input_directory}' no existe.")
         return
@@ -275,7 +229,7 @@ def main():
     # Solicitar factor de densificación con validación
     while True:
         try:
-            density_factor = float(input("Introduce el factor de densificación (recomendado 3-10): "))
+            density_factor = float(input("\nIntroduce el factor de densificación (3-10 recomendado, rango 1-20): "))
             if 1.0 <= density_factor <= 20.0:
                 break
             else:
@@ -283,21 +237,21 @@ def main():
         except ValueError:
             print("Error: Introduce un número válido.")
 
-    # Crear directorio de salida automáticamente dentro del directorio de entrada
-    output_dir_name = f"densified_IDW_3points_{density_factor}"
+    # Crear directorio de salida automáticamente
+    output_dir_name = f"densified_TIN_{density_factor}"
     output_directory = os.path.join(input_directory, output_dir_name)
     os.makedirs(output_directory, exist_ok=True)
     
-    print(f"\nSe creó el directorio de salida: {output_directory}")
+    print(f"\nDirectorio de salida creado: {output_directory}")
     print("\nIniciando procesamiento...")
-   
+
     # Ejecutar el proceso de densificación
     batch_densification_with_viz(
         input_directory,
         output_directory,
         density_factor
     )
-    
+
     print("\n=== Proceso completado ===")
     print(f"Resultados guardados en: {output_directory}")
 

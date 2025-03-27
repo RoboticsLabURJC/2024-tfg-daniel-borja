@@ -7,8 +7,9 @@ from typing import Tuple
 from sklearn.neighbors import NearestNeighbors
 import tkinter as tk
 from tkinter import filedialog, simpledialog
+from tqdm import tqdm 
+import time
 from scipy.stats import truncnorm
-
 # ------ Lectura de archivos -------
 
 def read_pcd_file(file_path):
@@ -52,10 +53,10 @@ def read_ply_file(file_path):
 def densify_point_cloud(points: np.ndarray, remissions: np.ndarray, 
                                        density_factor: float = 5.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Densifica la nube de puntos utilizando interpolación basada en los dos vecinos más cercanos.
+    Densifica la nube de puntos utilizando interpolación basada en vecinos más cercanos.
     """
     # Usar NearestNeighbors para encontrar los vecinos más cercanos
-    nn = NearestNeighbors(n_neighbors=3)
+    nn = NearestNeighbors(n_neighbors=2)
     nn.fit(points)
     
     # Establecer el número de nuevos puntos a crear
@@ -108,55 +109,37 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
 
         
         # Obtener los 2 vecinos más cercanos (el primero es él mismo)
-        distances,indices = nn.kneighbors([point], n_neighbors=3)
+        distances,indices = nn.kneighbors([point], n_neighbors=2)
 
-        # Seleccionar los puntos para la interpolacion
-        point_A = points[indices[0][0]]
-        point_B = points[indices[0][1]]
-        point_C = points[indices[0][2]]
+        # Seleccionar el segundo vecino más cercano para interpolar
+        neighbor_point = points[indices[0][1]]
+        neighbor_distance = distances[0][1] # Distancia al vecino más cercano
+       
+        #Generar lambda con distribucion normal truncanda
+        lambdaComb = truncnorm.rvs(a, b, loc=media, scale=desviacion_estandar)
+        print(f"Lambda: {lambdaComb}")
 
-        # Generar pesos aleatorios que sumen 1
-        lambda_1 = truncnorm.rvs(a ,b, loc=media, scale=desviacion_estandar)
-        lambda_2 = truncnorm.rvs(a ,b, loc=media, scale=desviacion_estandar)
-        lambda_3 = truncnorm.rvs(a ,b, loc=media, scale=desviacion_estandar)
+        #Interppolacion aplicando C = λA + (1-λ)B
+        interpolated_point = lambdaComb * point + (1 - lambdaComb) * neighbor_point
+        print(f"Point: {point}")
+        print(f"Neighbor: {neighbor_point}")
+        print(f"Interpolated point: {interpolated_point}")
 
-         # Normalizar los pesos para que sumen 1
-        total = lambda_1 + lambda_2 + lambda_3
-        lambda_1 /= total
-        lambda_2 /= total
-        lambda_3 /= total
-                
-        # Interpolacion aplicando D=λ1*​A+λ2*​B+λ3*​C
-        interpolated_point = lambda_1 * point_A + lambda_2 * point_B + lambda_3 * point_C
-
-        # Calcular las distancias d_A, d_B y d_C
-        d_A = np.linalg.norm(interpolated_point - point_A)  # Distancia al punto original
-        d_B = np.linalg.norm(interpolated_point - point_B)  # Distancia al primer vecino
-        d_C = np.linalg.norm(interpolated_point - point_C)  # Distancia al segundo vecino
-
+        # Calcular las distancias d_A y d_B
+        d_A = np.linalg.norm(interpolated_point - point)  # Distancia al punto original
+        d_B = np.linalg.norm(interpolated_point - neighbor_point)  # Distancia al vecino
+        
         # Aplicar la fórmula de interpolación para la remisión
         r_A = remissions[index]  # Remisión del punto original
-        r_B = remissions[indices[0][1]]  # Remisión del primer vecino
-        r_C = remissions[indices[0][2]]  # Remisión del segundo vecino
+        r_B = remissions[indices[0][1]]  # Remisión del vecino
 
         # Fórmula de interpolación de la remisión
-        interpolated_remission = ( (1/d_A) * r_A + (1/d_B) * r_B + (1/d_C) * r_C ) / ( (1/d_A) + (1/d_B) + (1/d_C) )
-        
+        interpolated_remission = ( (1/d_A) * r_A + (1/d_B) * r_B ) / ( (1/d_A) + (1/d_B) )
+
         # Agregar el nuevo punto y su intensidad
         new_points.append(interpolated_point)
         new_remissions.append(interpolated_remission)
  
-    # Mostrar el uso de los puntos
-    ## print("\nInformación de puntos usados como referencia:")
-    ## print("Formato: [Punto ID] (x, y, z) - usado N veces - Tipo")
-    ## for point_idx, count in point_usage_count.items():
-        ## coord = points[point_idx]
-        ## print(f"[{point_idx}] ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) - usado {count} veces - ORIGINAL")
-
-    # También podemos mostrar los nuevos puntos generados
-    ## print("\nPuntos nuevos generados:")
-    ## for i, new_point in enumerate(new_points):
-    ##    print(f"[NEW_{i}] ({new_point[0]:.3f}, {new_point[1]:.3f}, {new_point[2]:.3f}) - INTERPOLADO")
 
     # Convertir las listas a arrays
     new_points = np.array(new_points)
@@ -224,12 +207,13 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
     input_files = [f for f in os.listdir(input_directory) 
                    if f.endswith(('.bin', '.ply', '.pcd'))]
     
-    for file in input_files:
+    # Usar tqdm para mostrar una barra de progreso
+    for file in tqdm(input_files, desc="Procesando archivos", unit="archivo"):
         input_path = os.path.join(input_directory, file)
         output_filename = f"densified_{file}"  # Mantener misma extensión
         output_path = os.path.join(output_directory, output_filename)
         input_extension = os.path.splitext(file)[1]  # Obtener extensión (.bin, .ply, .pcd)
-        
+
         try:
             # Leer archivo dependiendo de su extensión
             if input_extension == '.bin':
@@ -243,13 +227,22 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
                 continue
             
             print(f"Número de puntos original: {len(points)}")
+
+            # Medir tiempo de inicio
+            start_time = time.time()
             
             # Densificar la nube de puntos
             points, remissions = densify_point_cloud(
                 points, remissions, density_factor
             )
+            # Medir tiempo de finalización
+            end_time = time.time()
             
             print(f"Número de puntos densificado: {len(points)}")
+            
+            # Calcular el tiempo transcurrido
+            elapsed_time = end_time - start_time
+            print(f"Tiempo de densificación: {elapsed_time:.2f} segundos")
             
             # Guardar los puntos densificados en el mismo formato
             save_point_cloud(
@@ -263,19 +256,18 @@ def batch_densification_with_viz(input_directory: str, output_directory: str,
             print(f"Error procesando {file}: {e}")
 
             
-
 def main():
     # Solicitar directorio de entrada por terminal
-    print("\n=== Densificación de nubes de puntos con IDW(3-NN) ===")
+    print("\n=== Densificación de nubes de puntos con IDW(2-NN) ===")
     input_directory = input("Introduce la ruta del directorio de entrada: ").strip()
     if not os.path.isdir(input_directory):
-        print(f"\nError: El directorio '{input_directory}' no existe.")
+        print("Error: El directorio de entrada no existe.")
         return
 
-    # Solicitar factor de densificación con validación
+    # Solicitar factor de densificación por terminal
     while True:
         try:
-            density_factor = float(input("Introduce el factor de densificación (recomendado 3-10): "))
+            density_factor = float(input("Introduce el factor de densificación (recomendado: 3-10): "))
             if 1.0 <= density_factor <= 20.0:
                 break
             else:
@@ -283,23 +275,23 @@ def main():
         except ValueError:
             print("Error: Introduce un número válido.")
 
-    # Crear directorio de salida automáticamente dentro del directorio de entrada
-    output_dir_name = f"densified_IDW_3points_{density_factor}"
+    # Crear directorio de salida automáticamente
+    base_output_dir = os.path.dirname(input_directory) if input_directory != os.path.curdir else os.path.curdir
+    output_dir_name = f"densified_IDW_2points_{density_factor}"
     output_directory = os.path.join(input_directory, output_dir_name)
-    os.makedirs(output_directory, exist_ok=True)
     
-    print(f"\nSe creó el directorio de salida: {output_directory}")
-    print("\nIniciando procesamiento...")
-   
+    
+    # Crear el directorio si no existe
+    os.makedirs(output_directory, exist_ok=True)
+    print(f"Se creó el directorio de salida: {output_directory}")
+
     # Ejecutar el proceso de densificación
     batch_densification_with_viz(
-        input_directory,
-        output_directory,
-        density_factor
+        input_directory, 
+        output_directory, 
+        density_factor, 
     )
-    
-    print("\n=== Proceso completado ===")
-    print(f"Resultados guardados en: {output_directory}")
+    print("Proceso de densificación completado.")
 
 if __name__ == "__main__":
     main()

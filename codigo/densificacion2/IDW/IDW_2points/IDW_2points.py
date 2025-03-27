@@ -117,13 +117,13 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
        
         #Generar lambda con distribucion normal truncanda
         lambdaComb = truncnorm.rvs(a, b, loc=media, scale=desviacion_estandar)
-        print(f"Lambda: {lambdaComb}")
+        ## print(f"Lambda: {lambdaComb}")
 
         #Interppolacion aplicando C = λA + (1-λ)B
         interpolated_point = lambdaComb * point + (1 - lambdaComb) * neighbor_point
-        print(f"Point: {point}")
-        print(f"Neighbor: {neighbor_point}")
-        print(f"Interpolated point: {interpolated_point}")
+        ## print(f"Point: {point}")
+        ## print(f"Neighbor: {neighbor_point}")
+        ## print(f"Interpolated point: {interpolated_point}")
 
         # Calcular las distancias d_A y d_B
         d_A = np.linalg.norm(interpolated_point - point)  # Distancia al punto original
@@ -261,7 +261,7 @@ def main():
     print("\n=== Densificación de nubes de puntos con IDW(2-NN) ===")
     input_directory = input("Introduce la ruta del directorio de entrada: ").strip()
     if not os.path.isdir(input_directory):
-        print("Error: El directorio de entrada no existe.")
+        print(f"\Error: El directorio '{input_directory}' no existe.")
         return
 
     # Solicitar factor de densificación por terminal
@@ -276,14 +276,16 @@ def main():
             print("Error: Introduce un número válido.")
 
     # Crear directorio de salida automáticamente
-    base_output_dir = os.path.dirname(input_directory) if input_directory != os.path.curdir else os.path.curdir
     output_dir_name = f"densified_IDW_2points_{density_factor}"
+    base_output_dir = os.path.dirname(input_directory) if input_directory != os.path.curdir else os.path.curdir
     output_directory = os.path.join(input_directory, output_dir_name)
     
     
     # Crear el directorio si no existe
     os.makedirs(output_directory, exist_ok=True)
-    print(f"Se creó el directorio de salida: {output_directory}")
+    
+    print(f"\nDirectorio de salida creado: {output_directory}")
+    print("\nIniciando procesamiento...")
 
     # Ejecutar el proceso de densificación
     batch_densification_with_viz(
@@ -291,7 +293,8 @@ def main():
         output_directory, 
         density_factor, 
     )
-    print("Proceso de densificación completado.")
+    print("\n=== Proceso completado ===")
+    print(f"Resultados guardados en: {output_directory}")
 
 if __name__ == "__main__":
     main()

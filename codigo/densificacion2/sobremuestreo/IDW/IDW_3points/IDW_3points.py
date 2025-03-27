@@ -147,16 +147,16 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
         new_remissions.append(interpolated_remission)
  
     # Mostrar el uso de los puntos
-    ## print("\nInformación de puntos usados como referencia:")
-    ## print("Formato: [Punto ID] (x, y, z) - usado N veces - Tipo")
-    ## for point_idx, count in point_usage_count.items():
-        ## coord = points[point_idx]
-        ## print(f"[{point_idx}] ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) - usado {count} veces - ORIGINAL")
+    print("\nInformación de puntos usados como referencia:")
+    print("Formato: [Punto ID] (x, y, z) - usado N veces - Tipo")
+    for point_idx, count in point_usage_count.items():
+        coord = points[point_idx]
+        print(f"[{point_idx}] ({coord[0]:.3f}, {coord[1]:.3f}, {coord[2]:.3f}) - usado {count} veces - ORIGINAL")
 
     # También podemos mostrar los nuevos puntos generados
-    ## print("\nPuntos nuevos generados:")
-    ## for i, new_point in enumerate(new_points):
-    ##    print(f"[NEW_{i}] ({new_point[0]:.3f}, {new_point[1]:.3f}, {new_point[2]:.3f}) - INTERPOLADO")
+    print("\nPuntos nuevos generados:")
+    for i, new_point in enumerate(new_points):
+        print(f"[NEW_{i}] ({new_point[0]:.3f}, {new_point[1]:.3f}, {new_point[2]:.3f}) - INTERPOLADO")
 
     # Convertir las listas a arrays
     new_points = np.array(new_points)
@@ -269,7 +269,7 @@ def main():
     print("\n=== Densificación de nubes de puntos con IDW(3-NN) ===")
     input_directory = input("Introduce la ruta del directorio de entrada: ").strip()
     if not os.path.isdir(input_directory):
-        print(f"\nError: El directorio '{input_directory}' no existe.")
+        print("Error: El directorio de entrada no existe.")
         return
 
     # Solicitar factor de densificación con validación
@@ -287,19 +287,16 @@ def main():
     output_dir_name = f"densified_IDW_3points_{density_factor}"
     output_directory = os.path.join(input_directory, output_dir_name)
     os.makedirs(output_directory, exist_ok=True)
-    
     print(f"\nSe creó el directorio de salida: {output_directory}")
-    print("\nIniciando procesamiento...")
-   
+
     # Ejecutar el proceso de densificación
+    print("\nIniciando densificación...")
     batch_densification_with_viz(
         input_directory,
         output_directory,
         density_factor
     )
-    
-    print("\n=== Proceso completado ===")
-    print(f"Resultados guardados en: {output_directory}")
+    print("\nProceso completado. Resultados guardados en:", output_directory)
 
 if __name__ == "__main__":
     main()
