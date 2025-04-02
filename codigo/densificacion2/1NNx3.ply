@@ -1,9 +1,0 @@
-ply
-format binary_little_endian 1.0
-element vertex 9
-property float x
-property float y
-property float z
-property float intensity
-end_header
-žÀ#®½j›~?Ü@Q?d¬ÀÇ­9?x·?Î9>sJžÀÆÁ¾·Í|¿GPY>ìq£ÀöFË>ó,E?POö>x¨ÀM¿>ªA?POö>Ïƒ¤Àýî²>ƒ¹H?POö>8^£À6S¢>:K@?POö>²¢À€lc>Í±`?POö>iS¢À»Ì>XÝ=?POö>
