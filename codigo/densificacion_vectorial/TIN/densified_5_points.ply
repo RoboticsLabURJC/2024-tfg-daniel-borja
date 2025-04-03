@@ -1,9 +1,0 @@
-ply
-format binary_little_endian 1.0
-element vertex 15
-property float x
-property float y
-property float z
-property float intensity
-end_header
-û–Àµ‘ô¾eU¿EßT?0^œÀ0Ä}¿y@‰=>¶®ÀiŽ¿à¥(?*­?–Àžñq¿õÙ½¸Ó=…7À—W¿2g¾Kt*?Ø, ÀüÈ!¿Ëëù½hž?>G¥À_¬F¿*w­>ýÕÁ>TÔœÀeB¿Ÿ/¾·Mâ>Š×ŸÀØc¿!>q‡>@•“ÀPýI¿­ ¨¾‡?\H•À…c¿Õ!B¾xP>4ÿ”ÀN7¿šÂ!¿O”A?Oƒ›ÀÍÄv¿Qq%<„Ì*>Ôä˜Ài¯<¿ç%È¾Ejì>ÜsšÀÕq¿ü½m™*>
