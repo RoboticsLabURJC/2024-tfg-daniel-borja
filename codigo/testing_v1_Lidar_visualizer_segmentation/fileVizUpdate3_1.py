@@ -218,7 +218,10 @@ def vis_sequences(path, initial_colormap='plasma', initial_fps=0.5):
     current_colors[0] = colors
     add_new_sample(point_cloud, points, colors)
 
-    segmentador = GroundSegmentation(altura_max_suelo=0.0, distancia_threshold=0.1)
+    segmentador = GroundSegmentation(
+        altura_max_suelo=-1.5,  # Valor negativo porque el suelo está bajo el sensor
+        distancia_threshold=0.1
+    )
 
     vis = o3d.visualization.VisualizerWithKeyCallback()
     vis.create_window(window_name='PointCloud Sequence')
@@ -297,15 +300,26 @@ def vis_sequences(path, initial_colormap='plasma', initial_fps=0.5):
     def toggle_segmentation(vis):
         is_segmented[0] = not is_segmented[0]
         if is_segmented[0]:
-            # Aplicar segmentación
-            segmentador.segment_ground(point_cloud)
-            print("Cambio a vista de segmentación")
+            try:
+                # Aplicar segmentación
+                segmentador.segment_ground(point_cloud)
+                
+                # Forzar actualización de colores
+                new_colors = np.asarray(point_cloud.colors)
+                point_cloud.colors = o3d.utility.Vector3dVector(new_colors)
+                
+                print("Vista de segmentación activada")
+                vis.update_geometry(point_cloud)
+                vis.update_renderer()
+            except Exception as e:
+                print(f"Error en segmentación: {str(e)}")
+                is_segmented[0] = False
         else:
-            # Volver a los colores del colormap
+            # Restaurar colores originales
             point_cloud.colors = o3d.utility.Vector3dVector(current_colors[0])
-            print("Cambio a vista de colormap")
-        vis.update_geometry(point_cloud)
-        vis.update_renderer()
+            print("Vista de colormap restaurada")
+            vis.update_geometry(point_cloud)
+            vis.update_renderer()
 
     def update_point_cloud():
         if is_bin_file[0]:
