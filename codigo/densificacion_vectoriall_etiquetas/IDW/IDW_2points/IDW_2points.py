@@ -8,6 +8,9 @@ from sklearn.neighbors import NearestNeighbors
 from tqdm import tqdm 
 import time
 from scipy.stats import truncnorm
+import glob
+from scipy.stats import mode
+import traceback
 
 # ------ Lectura de archivos -------
 
@@ -49,13 +52,23 @@ def read_ply_file(file_path):
 
 # ------ Densificación -------
 
-def densify_point_cloud(points: np.ndarray, remissions: np.ndarray, 
-                        density_factor: float = 5.0) -> Tuple[np.ndarray, np.ndarray]:
+def densify_point_cloud(points: np.ndarray, remissions: np.ndarray, labels: np.ndarray,
+                        density_factor: float = 5.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Versión vectorizada de la densificación de nubes de puntos LIDAR.
+    Densifica la nube de puntos con IDW y genera etiquetas para puntos nuevos.
+    
+    :param points: Nube de puntos original (N,3).
+    :param remissions: Intensidades (N,).
+    :param labels: Etiquetas originales (N,), opcional.
+    :param density_factor: Factor de densificación.
+    :return: points_combined, remissions_combined, labels_combined (si labels es None, retorna None).
     """
+
     print("\n=== INICIO DEL PROCESO DE DENSIFICACION MEDIANTE IDW CON 2 PUNTOS ===")
     print(f"Puntos iniciales: {points.shape}, Remisiones: {remissions.shape}")
+
+    if labels is not None:
+        print(f"Etiquetas iniciales: {labels.shape}")
 
     # Establecer el número de nuevos puntos a crear
     num_new_points = int((len(points) * (density_factor-1)))
@@ -65,10 +78,10 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
     print("\nPuntos base seleccionados (índices):")
     print(indices[:10], "...")  # Mostramos solo los primeros 10 para no saturar
 
-    unique_indices, counts = np.unique(indices, return_counts=True)
-    point_usage_count = dict(zip(unique_indices, counts))
-    print("\nConteo de usos por punto (primeros 10):")
-    print(dict(zip(unique_indices[:10], counts[:10])), "...")
+    #unique_indices, counts = np.unique(indices, return_counts=True)
+    #point_usage_count = dict(zip(unique_indices, counts))
+    #print("\nConteo de usos por punto (primeros 10):")
+    #print(dict(zip(unique_indices[:10], counts[:10])), "...")
     
     # Encontrar vecinos más cercanos para todos los puntos seleccionados a la vez
     print("\n2. Buscando vecinos más cercanos...")
@@ -136,21 +149,29 @@ def densify_point_cloud(points: np.ndarray, remissions: np.ndarray,
     print("\nRemisiones interpoladas (primeros 10):")
     print(interpolated_remissions[:10])
 
+    base_labels = labels[indices]
+    neighbor_labels = labels[neighbor_indices[:, 1]]
+    combined_labels_interpolated = np.array([mode([b, n], keepdims=True).mode[0] if b != n else b
+                                             for b, n in zip(base_labels, neighbor_labels)])
+
     # 6. Combinar resultados
     print("\n6. Combinando resultados...")
     combined_points = np.vstack([points, interpolated_points])
     combined_remissions = np.concatenate([remissions, interpolated_remissions])
+    combined_labels = np.concatenate([labels, combined_labels_interpolated])
 
     print("\n=== RESULTADOS FINALES ===")
     print(f"Total puntos originales: {len(points)}")
     print(f"Total puntos nuevos: {len(interpolated_points)}")
     print(f"Total puntos combinados: {len(combined_points)}")
-    print("\nPrimeros 5 puntos originales:")
-    print(points[:5])
-    print("\nÚltimos 5 puntos generados:")
-    print(interpolated_points[-5:])
+    if combined_labels is not None:
+        print(f"Total etiquetas combinadas: {len(combined_labels)}")
+    #print("\nPrimeros 5 puntos originales:")
+    #print(points[:5])
+    #print("\nÚltimos 5 puntos generados:")
+    #print(interpolated_points[-5:])
 
-    return combined_points, combined_remissions 
+    return combined_points, combined_remissions, combined_labels 
 
 # ------ Guardado de archivos-------
 
@@ -202,75 +223,102 @@ def save_point_cloud(points: np.ndarray, remissions: np.ndarray, output_path: st
 
 # ------ Procesamiento por lotes -------
 
-def batch_densification(input_dir: str, density_factor: float = 5.0):
-    
-    # Crear nombre de carpeta basado en el factor de densificación
+def batch_densification(input_dir: str, density_factor: float = 5.0, label_dir: str = None):
     densified_folder_name = f"densified_IDW_2points_{density_factor}"
     output_dir = os.path.join(input_dir, densified_folder_name)
-
-    # Crear directorio si no existe
     os.makedirs(output_dir, exist_ok=True)
-    print(f"\n Los archivos densificados se guardarán en: {output_dir}")
 
-    input_files = [f for f in os.listdir(input_dir) 
-                   if f.endswith(('.bin', '.ply', '.pcd'))]
-    
+    input_files = [f for f in os.listdir(input_dir) if f.endswith(('.bin', '.ply', '.pcd'))]
     if not input_files:
         print("\n⚠ No se encontraron archivos .bin, .ply o .pcd en el directorio")
         return
-    
+
     print(f"\n📁 Archivos a procesar ({len(input_files)}):")
     for i, f in enumerate(input_files, 1):
         print(f" {i}. {f}")
-        
-    # Procesar cada archivo
+
     for file in tqdm(input_files, desc="Procesando archivos"):
         input_path = os.path.join(input_dir, file)
         output_path = os.path.join(output_dir, f"densified_{file}")
         ext = os.path.splitext(file)[1]
-        
+        base_name = os.path.splitext(file)[0]
+
         try:
-            # Leer archivo
+            # Leer puntos y remisiones según extensión
             if ext == '.bin':
                 points, remissions = read_bin_file(input_path)
             elif ext == '.ply':
                 points, remissions = read_ply_file(input_path)
             elif ext == '.pcd':
                 points, remissions = read_pcd_file(input_path)
-            
+
+            labels = None
+            if label_dir:
+                # Mismo patrón que en tu ejemplo para buscar .label relacionado
+                parts = base_name.split('_')
+                if len(parts) > 1:
+                    base_name_common = "_".join(parts[:-1])
+                else:
+                    base_name_common = base_name
+
+                possible_labels = glob.glob(os.path.join(label_dir, f"*{base_name_common}*.label"))
+                if len(possible_labels) == 0:
+                    print(f"⚠ No se encontró archivo .label para {file} (buscando con patrón '{base_name_common}')")
+                    labels = np.zeros(len(points), dtype=np.uint32)
+                else:
+                    label_path = possible_labels[0]
+                    labels = np.fromfile(label_path, dtype=np.uint32)
+                    print(f"labels shape: {labels.shape}, type: {type(labels)}")
+                    print(f"labels sample: {labels[:10]}")
+                    if len(labels) != len(points):
+                        print(f"⚠ Mismatch: {file} tiene {len(points)} puntos, pero {len(labels)} etiquetas.")
+                        labels = np.zeros(len(points), dtype=np.uint32)
+            else:
+                labels = np.zeros(len(points), dtype=np.uint32)
+
             print(f"\n🔍 Procesando: {file} ({len(points)} puntos)")
-            
-            # Densificar
-            start_time = time.time()
-            dense_points, dense_remissions = densify_point_cloud(points, remissions, density_factor)
-            elapsed = time.time() - start_time
-            
-            print(f"✅ Densificado a {len(dense_points)} puntos (took {elapsed:.2f}s)")
-            
-            # Guardar
+
+            # Adaptar densify_point_cloud para que reciba y devuelva etiquetas
+            dense_points, dense_remissions, dense_labels = densify_point_cloud(
+                points, remissions, labels, density_factor)
+
+            print(f"✅ Densificado a {len(dense_points)} puntos")
+
             save_point_cloud(dense_points, dense_remissions, output_path, ext)
-            print(f"💾 Guardado como: densified_{file}")
-            
+
+            # Guardar etiquetas densificadas
+            label_output_path = os.path.splitext(output_path)[0] + ".label"
+            dense_labels.astype(np.uint32).tofile(label_output_path)
+            print(f"Archivo de etiquetas guardado en: {label_output_path}")
+
         except Exception as e:
             print(f"\n❌ Error procesando {file}: {str(e)}")
-    
-    print("\n Proceso completado!")
+            print(f"❌ Error: {e}")
+            traceback.print_exc()
+
+    print("\n✅ Proceso de densificación completado.")
             
 
 def main():
-
     print("\n" + "="*50)
-    print(" DENSIFICADOR DE NUBES DE PUNTOS LIDAR")
+    print(" DENSIFICADOR DE NUBES DE PUNTOS LIDAR CON ETIQUETAS")
     print("="*50 + "\n")
 
-    # Solicitar directorio de entrada
     while True:
         input_dir = input("📂 Introduzca la ruta del directorio de entrada: ").strip()
         if os.path.isdir(input_dir):
             break
         print("⚠ El directorio no existe. Intente nuevamente.")
 
-    # Solicitar factor de densificación
+    while True:
+        label_dir = input("🏷️ Introduzca la ruta del directorio de etiquetas (.label) (opcional): ").strip()
+        if label_dir == "":
+            label_dir = None
+            break
+        elif os.path.isdir(label_dir):
+            break
+        print("⚠ El directorio no existe. Intente nuevamente.")
+
     while True:
         try:
             density_factor = float(input("\n🔢 Introduzca el factor de densificación (3-10 recomendado): "))
@@ -280,14 +328,13 @@ def main():
         except ValueError:
             print("⚠ Debe introducir un número válido")
 
-
-    # Confirmación
     print(f"\n⚙ Configuración:")
     print(f" - Directorio de entrada: {input_dir}")
+    print(f" - Directorio de etiquetas: {label_dir if label_dir else 'Ninguno'}")
     print(f" - Factor de densificación: {density_factor}")
     print(f" - Los resultados se guardarán en: {os.path.join(input_dir, f'densified_IDW_2points_{density_factor}')}")
-    
-    batch_densification(input_dir, density_factor)
+
+    batch_densification(input_dir, density_factor, label_dir)
 
 
 if __name__ == "__main__":
