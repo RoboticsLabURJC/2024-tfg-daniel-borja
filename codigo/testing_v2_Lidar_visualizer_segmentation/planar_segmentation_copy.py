@@ -88,6 +88,10 @@ class GroundSegmentation:
 
         if mejor_plano is None:
             print("❌ No se detectó un plano válido como suelo.")
+            colores = np.zeros((len(puntos), 3))
+            colores[:] = [0, 0.7, 0]  # verde para todos
+            self.colores = colores
+            pcd.colors = o3d.utility.Vector3dVector(colores)
             return
         
         # Mapeo de índices inliers a la nube original
